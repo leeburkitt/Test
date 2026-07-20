@@ -50,6 +50,17 @@ function guessMapping(headers: string[]): ColumnMapping {
       mapping[header] = { type: "resting_heart_rate" };
     } else if (h.includes("endurance")) {
       mapping[header] = { type: "endurance_score" };
+    } else if (h.includes("calorie") || h.includes("active")) {
+      // Garmin's own export just labels this "Avg 4W Active daily" with no
+      // "calorie" in sight — "active" is the only reliable marker.
+      mapping[header] = { type: "active_calories_avg_4w" };
+    } else if (h.includes("step")) {
+      mapping[header] = { type: "steps_avg_4w" };
+    } else if (h.includes("avg") && h.includes("daily")) {
+      // The steps column ("Avg (4W) Daily") is otherwise indistinguishable
+      // from the calories one by header text alone; "active" above always
+      // wins first, so anything left matching this generic shape is steps.
+      mapping[header] = { type: "steps_avg_4w" };
     } else if (h.includes("notes")) {
       mapping[header] = { type: "notes" };
     } else {
