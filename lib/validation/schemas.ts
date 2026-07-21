@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { equipmentCategoryValues } from "@/lib/db/schema";
+import { equipmentCategoryValues, routineDayTypeValues } from "@/lib/db/schema";
 
 export const gymEquipmentSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
@@ -74,3 +74,20 @@ export const importedRowSchema = z.object({
 });
 
 export const importRowsSchema = z.array(importedRowSchema).min(1).max(5000);
+
+export const weeklyScheduleSchema = z.object({
+  days: z.array(z.enum(routineDayTypeValues)).length(7),
+  gymId: z.coerce.number().int().positive().optional(),
+});
+
+export const routineExerciseProgressSchema = z.object({
+  routineExerciseId: z.coerce.number().int().positive(),
+  actualWeightKg: z.coerce.number().positive().optional(),
+  completed: z.coerce.boolean(),
+});
+
+export const routineDayProgressSchema = z.object({
+  dayId: z.coerce.number().int().positive(),
+  completed: z.coerce.boolean().optional(),
+  exercises: z.array(routineExerciseProgressSchema).optional(),
+});

@@ -1,6 +1,6 @@
 import type { InferSelectModel } from "drizzle-orm";
 import type { goals, metrics, equipment, exercises, gyms, gymZones, coachMessages } from "@/lib/db/schema";
-import type { TrendStatus } from "@/lib/db/schema";
+import type { TrendStatus, RoutineDayType, WeeklySchedule } from "@/lib/db/schema";
 
 export type Goal = InferSelectModel<typeof goals>;
 export type Metric = InferSelectModel<typeof metrics>;
@@ -20,8 +20,12 @@ export type RoutineContext = {
   weekNumber: number;
   trainingDaysPerWeek: number;
   recentTrendStatuses: TrendStatus[];
-  /** exerciseId -> most recently prescribed weight (kg), for progressive overload. */
+  /** exerciseId -> most recently prescribed (or actually lifted) weight (kg), for progressive overload. */
   previousExerciseWeights: Record<number, number>;
+  weeklySchedule: WeeklySchedule;
+  selectedGymId: number | null;
+  /** Zones belonging to selectedGymId only (empty if no gym selected). */
+  gymZones: GymZone[];
 };
 
 export type GeneratedExercise = {
@@ -31,12 +35,17 @@ export type GeneratedExercise = {
   repsLow: number;
   repsHigh: number;
   targetWeightKg?: number;
+  restSeconds?: number;
   intensityNote?: string;
   notes?: string;
 };
 
 export type GeneratedRoutineDay = {
   focus: string;
+  dayOfWeek: number;
+  dayType: RoutineDayType;
+  zoneId?: number;
+  coachNote?: string;
   exercises: GeneratedExercise[];
 };
 

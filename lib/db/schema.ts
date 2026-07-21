@@ -7,11 +7,18 @@ const bytea = customType<{ data: Buffer }>({
   },
 });
 
+export const routineDayTypeValues = ["gym", "free_weights", "run", "swim", "walk", "rest"] as const;
+export type RoutineDayType = (typeof routineDayTypeValues)[number];
+
+export type WeeklySchedule = { days: RoutineDayType[] };
+
 export const settings = pgTable("settings", {
   id: integer("id").primaryKey().default(1),
   unitsWeight: text("units_weight", { enum: ["kg", "lb"] }).notNull().default("kg"),
   trainingDaysPerWeek: integer("training_days_per_week").notNull().default(4),
   timezone: text("timezone").notNull().default("UTC"),
+  weeklySchedule: jsonb("weekly_schedule").$type<WeeklySchedule>(),
+  defaultGymId: integer("default_gym_id").references(() => gyms.id, { onDelete: "set null" }),
   updatedAt: text("updated_at").notNull().default(sql`(current_timestamp)`),
 });
 
@@ -170,6 +177,7 @@ export const routines = pgTable("routines", {
   weekNumber: integer("week_number").notNull(),
   weekStartDate: text("week_start_date").notNull(),
   goalId: integer("goal_id").notNull().references(() => goals.id, { onDelete: "cascade" }),
+  gymId: integer("gym_id").references(() => gyms.id, { onDelete: "set null" }),
   generatorStrategy: text("generator_strategy", { enum: generatorStrategyValues }).notNull(),
   trendStatus: text("trend_status", { enum: trendStatusValues }).notNull(),
   rationale: text("rationale").notNull(),
@@ -180,7 +188,12 @@ export const routineDays = pgTable("routine_days", {
   id: serial("id").primaryKey(),
   routineId: integer("routine_id").notNull().references(() => routines.id, { onDelete: "cascade" }),
   dayIndex: integer("day_index").notNull(),
+  dayOfWeek: integer("day_of_week"),
+  dayType: text("day_type", { enum: routineDayTypeValues }).notNull().default("gym"),
+  zoneId: integer("zone_id").references(() => gymZones.id, { onDelete: "set null" }),
   focus: text("focus").notNull(),
+  coachNote: text("coach_note"),
+  completed: boolean("completed").notNull().default(false),
 });
 
 export const routineExercises = pgTable("routine_exercises", {
@@ -192,6 +205,9 @@ export const routineExercises = pgTable("routine_exercises", {
   repsLow: integer("reps_low").notNull(),
   repsHigh: integer("reps_high").notNull(),
   targetWeightKg: real("target_weight_kg"),
+  restSeconds: integer("rest_seconds"),
   intensityNote: text("intensity_note"),
   notes: text("notes"),
+  actualWeightKg: real("actual_weight_kg"),
+  completed: boolean("completed").notNull().default(false),
 });

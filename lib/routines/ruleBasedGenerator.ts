@@ -6,9 +6,9 @@ import type {
   GeneratedExercise,
   ExerciseWithEquipment,
 } from "@/lib/routines/types";
-import type { MovementPattern, TrendStatus } from "@/lib/db/schema";
+import type { MovementPattern, TrendStatus, RoutineDayType } from "@/lib/db/schema";
 import { analyzeTrend } from "@/lib/routines/trendAnalysis";
-import { filterAvailableExercises } from "@/lib/routines/equipmentFilter";
+import { buildDaySlots, dayTypeLabel } from "@/lib/routines/daySlots";
 
 const DAY_SPLITS: Record<number, string[]> = {
   1: ["Full Body"],
@@ -28,9 +28,20 @@ const FOCUS_MOVEMENT_PATTERNS: Record<string, MovementPattern[]> = {
   Lower: ["squat", "hinge", "carry"],
 };
 
-function dayFocusPlan(trainingDaysPerWeek: number): string[] {
-  const clamped = Math.min(6, Math.max(1, trainingDaysPerWeek));
+const CARDIO_COACH_NOTES: Partial<Record<RoutineDayType, string>> = {
+  run: "Easy-to-moderate pace run, 25-35 minutes. Prioritise a steady breathing rhythm over speed.",
+  swim: "Continuous steady swim, 20-30 minutes, any stroke mix, conversational effort.",
+  walk: "Brisk walk, 30-45 minutes — a good active-recovery session between harder days.",
+};
+
+function dayFocusPlan(gymDayCount: number): string[] {
+  const clamped = Math.min(6, Math.max(1, gymDayCount));
   return DAY_SPLITS[clamped];
+}
+
+function restSecondsFor(ex: ExerciseWithEquipment): number {
+  if (ex.movementPattern === "core" || ex.movementPattern === "cardio") return 45;
+  return ex.isCompound ? 120 : 75;
 }
 
 export class RuleBasedRoutineGenerator implements RoutineGenerator {
@@ -38,21 +49,42 @@ export class RuleBasedRoutineGenerator implements RoutineGenerator {
     const today = new Date().toISOString().slice(0, 10);
     const trend = analyzeTrend(ctx.goal, ctx.recentMetrics, today);
 
-    const available = filterAvailableExercises(ctx.exerciseLibrary, ctx.equipment);
-
     const deloadWeek =
       ctx.recentTrendStatuses.length >= 3 &&
       ctx.recentTrendStatuses.slice(-3).every((s: TrendStatus) => s === "behind");
 
-    const focuses = dayFocusPlan(ctx.trainingDaysPerWeek);
-    const coreExercises = available.filter((ex) => ex.movementPattern === "core");
-    const cardioExercises = available.filter((ex) => ex.movementPattern === "cardio");
+    const slots = buildDaySlots(ctx);
+    const gymDayCount = slots.filter((s) => s.dayType === "gym" || s.dayType === "free_weights").length;
+    const splitFocuses = dayFocusPlan(gymDayCount);
 
     const usedAccessoryIds = new Set<number>();
-    const days: GeneratedRoutineDay[] = focuses.map((focus, dayIndex) =>
-      this.buildDay({
-        focus,
-        dayIndex,
+    const days: GeneratedRoutineDay[] = [];
+    let gymDaySlot = 0;
+
+    for (const slot of slots) {
+      const { dayOfWeek, dayType } = slot;
+
+      if (dayType === "run" || dayType === "swim" || dayType === "walk") {
+        days.push({
+          focus: dayTypeLabel(dayType),
+          dayOfWeek,
+          dayType,
+          coachNote: CARDIO_COACH_NOTES[dayType],
+          exercises: [],
+        });
+        continue;
+      }
+
+      // 'gym' or 'free_weights'
+      const available = slot.available;
+      const splitFocus = dayType === "free_weights" ? "Full Body" : splitFocuses[gymDaySlot % splitFocuses.length];
+
+      const coreExercises = available.filter((ex) => ex.movementPattern === "core");
+      const cardioExercises = available.filter((ex) => ex.movementPattern === "cardio");
+
+      const exercises = this.buildExercises({
+        splitFocus,
+        gymDaySlot,
         available,
         coreExercises,
         cardioExercises,
@@ -60,8 +92,18 @@ export class RuleBasedRoutineGenerator implements RoutineGenerator {
         trend,
         deloadWeek,
         usedAccessoryIds,
-      })
-    );
+      });
+
+      days.push({
+        focus: slot.zoneName ?? dayTypeLabel(dayType),
+        dayOfWeek,
+        dayType,
+        zoneId: slot.zoneId,
+        exercises,
+      });
+
+      gymDaySlot++;
+    }
 
     return {
       weekNumber: ctx.weekNumber,
@@ -71,9 +113,9 @@ export class RuleBasedRoutineGenerator implements RoutineGenerator {
     };
   }
 
-  private buildDay(params: {
-    focus: string;
-    dayIndex: number;
+  private buildExercises(params: {
+    splitFocus: string;
+    gymDaySlot: number;
     available: ExerciseWithEquipment[];
     coreExercises: ExerciseWithEquipment[];
     cardioExercises: ExerciseWithEquipment[];
@@ -81,11 +123,11 @@ export class RuleBasedRoutineGenerator implements RoutineGenerator {
     trend: ReturnType<typeof analyzeTrend>;
     deloadWeek: boolean;
     usedAccessoryIds: Set<number>;
-  }): GeneratedRoutineDay {
-    const { focus, dayIndex, available, coreExercises, cardioExercises, ctx, trend, deloadWeek, usedAccessoryIds } =
+  }): GeneratedExercise[] {
+    const { splitFocus, gymDaySlot, available, coreExercises, cardioExercises, ctx, trend, deloadWeek, usedAccessoryIds } =
       params;
 
-    const patterns = FOCUS_MOVEMENT_PATTERNS[focus] ?? [];
+    const patterns = FOCUS_MOVEMENT_PATTERNS[splitFocus] ?? [];
     const candidates = available.filter((ex) => patterns.includes(ex.movementPattern));
 
     const exercises: GeneratedExercise[] = [];
@@ -119,6 +161,7 @@ export class RuleBasedRoutineGenerator implements RoutineGenerator {
         sets,
         repsLow: ex.defaultSetsRepsScheme.repsLow,
         repsHigh: ex.defaultSetsRepsScheme.repsHigh,
+        restSeconds: restSecondsFor(ex),
         intensityNote,
       });
     };
@@ -131,22 +174,22 @@ export class RuleBasedRoutineGenerator implements RoutineGenerator {
     }
 
     // Fill remaining slots with compound movements first, then accessories, rotated by
-    // week number AND day index — the latter keeps repeated focuses in the same week
+    // week number AND slot index — the latter keeps repeated splits in the same week
     // (e.g. two "Upper" days in a 4-day split) from picking identical accessories.
     const rest = candidates
       .filter((ex) => !addedIds.has(ex.id))
       .sort((a, b) => Number(b.isCompound) - Number(a.isCompound));
 
-    const targetSlotCount = focus === "Full Body" ? 5 : 4;
-    const offset = (ctx.weekNumber + dayIndex * 2) % Math.max(1, rest.length);
+    const targetSlotCount = splitFocus === "Full Body" ? 5 : 4;
+    const offset = (ctx.weekNumber + gymDaySlot * 2) % Math.max(1, rest.length);
     for (let i = 0; i < rest.length && exercises.length < targetSlotCount; i++) {
       const ex = rest[(i + offset) % rest.length];
       addExercise(ex);
     }
 
-    // One core exercise per day, rotated by day index + week number.
+    // One core exercise per day, rotated by slot index + week number.
     if (coreExercises.length > 0) {
-      const core = coreExercises[(dayIndex + ctx.weekNumber) % coreExercises.length];
+      const core = coreExercises[(gymDaySlot + ctx.weekNumber) % coreExercises.length];
       addExercise(core);
     }
 
@@ -155,11 +198,11 @@ export class RuleBasedRoutineGenerator implements RoutineGenerator {
       (t) => (t.key === "weight" || t.key === "bodyFatPct") && t.status === "behind"
     );
     if (weightOrFatBehind && cardioExercises.length > 0) {
-      const cardio = cardioExercises[(dayIndex + ctx.weekNumber) % cardioExercises.length];
+      const cardio = cardioExercises[(gymDaySlot + ctx.weekNumber) % cardioExercises.length];
       addExercise(cardio);
     }
 
-    return { focus, exercises };
+    return exercises;
   }
 
   private buildRationale(trend: ReturnType<typeof analyzeTrend>, deloadWeek: boolean): string {

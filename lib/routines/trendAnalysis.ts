@@ -53,6 +53,14 @@ export function getWeekNumber(goal: Pick<Goal, "startDate" | "endDate">, today: 
   return Math.min(12, Math.max(1, Math.ceil((elapsed + 1) / 7)));
 }
 
+/** Returns the ISO date (YYYY-MM-DD) of the Monday of the week containing `dateStr`. */
+export function getMondayOfWeek(dateStr: string): string {
+  const date = new Date(`${dateStr}T00:00:00Z`);
+  const isoDayOfWeek = (date.getUTCDay() + 6) % 7; // 0=Mon..6=Sun
+  date.setUTCDate(date.getUTCDate() - isoDayOfWeek);
+  return date.toISOString().slice(0, 10);
+}
+
 function expectedValue(start: number, target: number, elapsedDays: number, totalDays: number): number {
   if (totalDays <= 0) return target;
   const ratio = Math.min(1, Math.max(0, elapsedDays / totalDays));
