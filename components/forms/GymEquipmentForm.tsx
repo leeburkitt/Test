@@ -44,8 +44,16 @@ export function GymEquipmentForm({ gymId, zoneId }: { gymId: number; zoneId: num
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wasPending = useRef(false);
+  // Synchronous guard against double-submission: React state (photoPhase) only takes effect
+  // after a render, so two taps in the same tick (easy with a slow camera picker) can both
+  // pass the "disabled" check before either commits. A ref mutates immediately.
+  const busyRef = useRef(false);
+  // Bumped on every new attempt/cancel so a slow, still-in-flight request from a stale
+  // attempt can't clobber the state of whatever the user is doing now when it finally settles.
+  const requestIdRef = useRef(0);
 
   function resetForm() {
+    busyRef.current = false;
     formRef.current?.reset();
     setPreviewUrl(null);
     setDescription("");
@@ -53,6 +61,13 @@ export function GymEquipmentForm({ gymId, zoneId }: { gymId: number; zoneId: num
     setCategory(equipmentCategoryValues[0]);
     setNotes("");
     setPhotoPhase("idle");
+  }
+
+  function cancelPhoto() {
+    requestIdRef.current++;
+    busyRef.current = false;
+    setPhotoPhase("idle");
+    setPreviewUrl(null);
   }
 
   useEffect(() => {
@@ -77,9 +92,17 @@ export function GymEquipmentForm({ gymId, zoneId }: { gymId: number; zoneId: num
 
   function handleFile(file: File | undefined) {
     if (!file) return;
+    // Synchronous check-and-set — closes the double-tap race that a React-state-only guard
+    // can't, since two taps in the same tick would both still read photoPhase as "idle".
+    if (busyRef.current) return;
+    busyRef.current = true;
+    const requestId = ++requestIdRef.current;
+    const stillCurrent = () => requestIdRef.current === requestId;
+
     setPhotoPhase("reading");
     startScan(async () => {
       const uploadFile = await resizeImageFile(file).catch(() => file);
+      if (!stillCurrent()) return;
       setPreviewUrl(URL.createObjectURL(uploadFile));
 
       const scanData = new FormData();
@@ -89,10 +112,13 @@ export function GymEquipmentForm({ gymId, zoneId }: { gymId: number; zoneId: num
       try {
         result = await scanEquipmentPhoto(scanData);
       } catch (err) {
+        if (!stillCurrent()) return;
+        busyRef.current = false;
         setPhotoPhase("idle");
         toast.error(describeUploadError(err));
         return;
       }
+      if (!stillCurrent()) return;
 
       applySuggestion(result);
       setPhotoPhase("saving");
@@ -109,11 +135,15 @@ export function GymEquipmentForm({ gymId, zoneId }: { gymId: number; zoneId: num
       try {
         saveResult = await createGymEquipment(undefined, saveData);
       } catch (err) {
+        if (!stillCurrent()) return;
+        busyRef.current = false;
         setPhotoPhase("idle");
         toast.error(`Couldn't save automatically: ${describeUploadError(err)} Review the details and add it manually.`);
         return;
       }
+      if (!stillCurrent()) return;
       if (saveResult?.error) {
+        busyRef.current = false;
         setPhotoPhase("idle");
         toast.error(`Couldn't save automatically: ${saveResult.error}. Review the details and add it manually.`);
         return;
@@ -160,7 +190,10 @@ export function GymEquipmentForm({ gymId, zoneId }: { gymId: number; zoneId: num
             type="file"
             accept="image/*"
             capture="environment"
-            onChange={(e) => handleFile(e.target.files?.[0])}
+            onChange={(e) => {
+              handleFile(e.target.files?.[0]);
+              e.target.value = "";
+            }}
           />
 
           {previewUrl ? (
@@ -175,28 +208,42 @@ export function GymEquipmentForm({ gymId, zoneId }: { gymId: number; zoneId: num
                 <p className="text-sm text-muted-foreground">
                   {photoPhase === "idle" ? "Captured" : photoButtonLabel}
                 </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="self-start"
-                  disabled={photoPhase !== "idle"}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Camera className="size-4" /> Retake photo
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    disabled={photoPhase !== "idle"}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Camera className="size-4" /> Retake photo
+                  </Button>
+                  {photoPhase !== "idle" && (
+                    <Button type="button" variant="ghost" size="sm" className="self-start" onClick={cancelPhoto}>
+                      Cancel
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
-            <Button
-              type="button"
-              className="h-24 flex-col gap-1.5 text-base"
-              disabled={photoPhase !== "idle"}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Camera className="size-6" />
-              {photoButtonLabel}
-            </Button>
+            <div className="flex flex-col items-start gap-2">
+              <Button
+                type="button"
+                className="h-24 w-full flex-col gap-1.5 text-base"
+                disabled={photoPhase !== "idle"}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Camera className="size-6" />
+                {photoButtonLabel}
+              </Button>
+              {photoPhase !== "idle" && (
+                <Button type="button" variant="ghost" size="sm" onClick={cancelPhoto}>
+                  Cancel
+                </Button>
+              )}
+            </div>
           )}
           <p className="text-xs text-muted-foreground">
             Point at the equipment&apos;s label or nameplate — it&apos;s saved to this zone automatically once
