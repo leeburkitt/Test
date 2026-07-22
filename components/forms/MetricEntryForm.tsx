@@ -28,38 +28,40 @@ export function MetricEntryForm({ suggestedKeys = [] }: { suggestedKeys?: string
           <Input id="weight" name="weight" type="number" step="0.1" min="0" />
         </div>
         <div className="flex flex-col gap-2">
+          <Label htmlFor="bmi">BMI</Label>
+          <Input id="bmi" name="bmi" type="number" step="0.1" min="0" />
+        </div>
+        <div className="flex flex-col gap-2">
           <Label htmlFor="bodyFatPct">Body fat %</Label>
           <Input id="bodyFatPct" name="bodyFatPct" type="number" step="0.1" min="0" max="100" />
         </div>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <p className="text-sm font-medium text-muted-foreground">Body composition</p>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="bmi">BMI</Label>
-            <Input id="bmi" name="bmi" type="number" step="0.1" min="0" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="bodyFatMassKg">Body fat mass (kg)</Label>
-            <Input id="bodyFatMassKg" name="bodyFatMassKg" type="number" step="0.1" min="0" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="skeletalMuscleMassKg">Skeletal muscle mass (kg)</Label>
-            <Input id="skeletalMuscleMassKg" name="skeletalMuscleMassKg" type="number" step="0.1" min="0" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="boneMassKg">Bone mass (kg)</Label>
-            <Input id="boneMassKg" name="boneMassKg" type="number" step="0.1" min="0" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="bodyWaterPct">Body water %</Label>
-            <Input id="bodyWaterPct" name="bodyWaterPct" type="number" step="0.1" min="0" max="100" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="waistCm">Waist (cm)</Label>
-            <Input id="waistCm" name="waistCm" type="number" step="0.1" min="0" />
-          </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="skeletalMuscleMassKg">Skeletal muscle mass (kg)</Label>
+          <Input id="skeletalMuscleMassKg" name="skeletalMuscleMassKg" type="number" step="0.1" min="0" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="boneMassKg">Bone mass (kg)</Label>
+          <Input id="boneMassKg" name="boneMassKg" type="number" step="0.1" min="0" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="bodyWaterPct">Body water %</Label>
+          <Input id="bodyWaterPct" name="bodyWaterPct" type="number" step="0.1" min="0" max="100" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="enduranceScore">Endurance score</Label>
+          <Input id="enduranceScore" name="enduranceScore" type="number" step="1" min="0" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="activeCaloriesAvg4w">Avg active calories (4w)</Label>
+          <Input id="activeCaloriesAvg4w" name="activeCaloriesAvg4w" type="number" step="1" min="0" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="stepsAvg4w">Avg steps (4w)</Label>
+          <Input id="stepsAvg4w" name="stepsAvg4w" type="number" step="1" min="0" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="waistCm">Waist (cm)</Label>
+          <Input id="waistCm" name="waistCm" type="number" step="0.1" min="0" />
         </div>
       </div>
 
@@ -77,24 +79,6 @@ export function MetricEntryForm({ suggestedKeys = [] }: { suggestedKeys?: string
           <div className="flex flex-col gap-2">
             <Label htmlFor="diastolic">Diastolic BP</Label>
             <Input id="diastolic" name="diastolic" type="number" step="1" min="0" />
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <p className="text-sm font-medium text-muted-foreground">Activity</p>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="enduranceScore">Endurance score</Label>
-            <Input id="enduranceScore" name="enduranceScore" type="number" step="1" min="0" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="activeCaloriesAvg4w">Avg active calories (4w)</Label>
-            <Input id="activeCaloriesAvg4w" name="activeCaloriesAvg4w" type="number" step="1" min="0" />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="stepsAvg4w">Avg steps (4w)</Label>
-            <Input id="stepsAvg4w" name="stepsAvg4w" type="number" step="1" min="0" />
           </div>
         </div>
       </div>
