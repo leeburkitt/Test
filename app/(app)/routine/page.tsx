@@ -76,6 +76,7 @@ export default async function RoutinePage() {
           <RoutineCard
             key={routine.id}
             weekNumber={routine.weekNumber}
+            weekStartDate={routine.weekStartDate}
             trendStatus={routine.trendStatus}
             rationale={routine.rationale}
             days={routine.days}

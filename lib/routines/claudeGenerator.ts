@@ -46,7 +46,7 @@ const outputFormat = {
               },
             },
           },
-          required: ["dayOfWeek", "exercises"],
+          required: ["dayOfWeek", "coachNote", "exercises"],
           additionalProperties: false,
         },
       },
@@ -58,7 +58,7 @@ const outputFormat = {
 
 type RawDay = {
   dayOfWeek: number;
-  coachNote?: string;
+  coachNote: string;
   exercises: {
     exerciseId: number;
     sets: number;
@@ -112,10 +112,11 @@ export class ClaudeRoutineGenerator implements RoutineGenerator {
             `Secondary goal: ${ctx.goal.secondaryGoal ?? "none set"}.\n` +
             `Current trend status: ${trend.status}.\n\n` +
             "This week's day slots (one entry per real calendar day that isn't a rest day — " +
-            "produce exactly one output day per slot, matched by dayOfWeek; for 'gym'/'free_weights' " +
-            "dayType slots, exerciseId MUST come from that slot's own allowedExerciseIds; for " +
-            "'run'/'swim'/'walk' dayType slots, allowedExerciseIds is empty — leave exercises empty and " +
-            "write a coachNote instead):\n" +
+            "produce exactly one output day per slot, matched by dayOfWeek; every slot needs a coachNote " +
+            "(see task instructions above for what a gym/free-weights day's coachNote should cover); for " +
+            "'gym'/'free_weights' dayType slots, exerciseId MUST come from that slot's own " +
+            "allowedExerciseIds; for 'run'/'swim'/'walk' dayType slots, allowedExerciseIds is empty — " +
+            "leave exercises empty):\n" +
             JSON.stringify(daySlotPayload) +
             "\n\nPrevious week's prescribed/actual weights (for progressive overload):\n" +
             (previousWeightLines.length > 0

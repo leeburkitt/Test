@@ -6,6 +6,7 @@ import {
   goals,
   metrics,
   equipment,
+  equipmentPhotos,
   exercises,
   exerciseEquipment,
   settings,
@@ -15,12 +16,15 @@ import {
   routineDays,
   routineExercises,
 } from "@/lib/db/schema";
-import type { WeeklySchedule } from "@/lib/db/schema";
+import type { WeeklySchedule, SetLog } from "@/lib/db/schema";
 import { desc, eq, gte } from "drizzle-orm";
 import { getRoutineGenerator } from "@/lib/routines/factory";
 import { getWeekNumber, getMondayOfWeek } from "@/lib/routines/trendAnalysis";
-import { weeklyScheduleSchema, routineDayProgressSchema } from "@/lib/validation/schemas";
-import type { ExerciseWithEquipment } from "@/lib/routines/types";
+import { buildDaySlots } from "@/lib/routines/daySlots";
+import { pickEquipmentForExercise } from "@/lib/routines/equipmentMatch";
+import { getExerciseDemo } from "@/lib/routines/exerciseDemo";
+import { routineDayProgressSchema, logSetSchema } from "@/lib/validation/schemas";
+import type { ExerciseWithEquipment, RoutineContext } from "@/lib/routines/types";
 import type { z } from "zod";
 
 const DEFAULT_SCHEDULE: WeeklySchedule = { days: Array(7).fill("rest") };
@@ -119,8 +123,7 @@ export async function generateRoutineForCurrentWeek(): Promise<{ error?: string 
     .slice(-3)
     .map((r) => r.trendStatus);
 
-  const generator = getRoutineGenerator();
-  const generated = await generator.generate({
+  const ctx: RoutineContext = {
     goal: activeGoal,
     recentMetrics,
     equipment: equipmentList,
@@ -132,7 +135,16 @@ export async function generateRoutineForCurrentWeek(): Promise<{ error?: string 
     weeklySchedule,
     selectedGymId,
     gymZones: gymZonesList,
-  });
+  };
+
+  const generator = getRoutineGenerator();
+  const generated = await generator.generate(ctx);
+
+  // Recomputing day slots here is cheap (pure, no I/O) and reproduces the exact same
+  // zone/day assignment the generator used internally — this is only to get each day's
+  // narrowed equipment pool, so a specific machine can be matched to each exercise.
+  const slotsByDayOfWeek = new Map(buildDaySlots(ctx).map((s) => [s.dayOfWeek, s]));
+  const exerciseById = new Map(exerciseLibrary.map((e) => [e.id, e]));
 
   const [insertedRoutine] = await db
     .insert(routines)
@@ -162,11 +174,21 @@ export async function generateRoutineForCurrentWeek(): Promise<{ error?: string 
       })
       .returning({ id: routineDays.id });
 
+    const scopedEquipment = slotsByDayOfWeek.get(day.dayOfWeek)?.scopedEquipment ?? [];
+
     for (let orderIndex = 0; orderIndex < day.exercises.length; orderIndex++) {
       const ex = day.exercises[orderIndex];
+      const libraryEntry = exerciseById.get(ex.exerciseId);
+      const matchedEquipment = libraryEntry ? pickEquipmentForExercise(libraryEntry, scopedEquipment) : undefined;
+      const initialSetLogs: SetLog[] = Array.from({ length: ex.sets }, () => ({
+        weightKg: null,
+        completed: false,
+      }));
+
       await db.insert(routineExercises).values({
         routineDayId: insertedDay.id,
         exerciseId: ex.exerciseId,
+        equipmentId: matchedEquipment?.id ?? null,
         orderIndex,
         sets: ex.sets,
         repsLow: ex.repsLow,
@@ -175,6 +197,7 @@ export async function generateRoutineForCurrentWeek(): Promise<{ error?: string 
         restSeconds: ex.restSeconds ?? null,
         intensityNote: ex.intensityNote ?? null,
         notes: ex.notes ?? null,
+        setLogs: initialSetLogs,
       });
     }
   }
@@ -207,33 +230,118 @@ export async function regenerateRoutineForCurrentWeek(): Promise<{ error?: strin
 
 export type LogRoutineDayInput = z.infer<typeof routineDayProgressSchema>;
 
+/** Cardio-day (run/swim/walk) completion toggle — gym-day exercises are logged per-set via `logSet`. */
 export async function logRoutineDay(input: LogRoutineDayInput): Promise<{ error?: string }> {
   const parsed = routineDayProgressSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  await db.transaction(async (tx) => {
-    if (parsed.data.completed !== undefined) {
-      await tx
-        .update(routineDays)
-        .set({ completed: parsed.data.completed })
-        .where(eq(routineDays.id, parsed.data.dayId));
-    }
-
-    for (const entry of parsed.data.exercises ?? []) {
-      await tx
-        .update(routineExercises)
-        .set({
-          actualWeightKg: entry.actualWeightKg ?? null,
-          completed: entry.completed,
-        })
-        .where(eq(routineExercises.id, entry.routineExerciseId));
-    }
-  });
+  await db.update(routineDays).set({ completed: parsed.data.completed }).where(eq(routineDays.id, parsed.data.dayId));
 
   revalidatePath("/routine");
   return {};
+}
+
+export type LogSetInput = z.infer<typeof logSetSchema>;
+export type LogSetResult = { error?: string; setLogs?: SetLog[]; actualWeightKg?: number | null; completed?: boolean };
+
+export async function logSet(input: LogSetInput): Promise<LogSetResult> {
+  const parsed = logSetSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const { routineExerciseId, setIndex, weightKg } = parsed.data;
+
+  const [row] = await db
+    .select({ setLogs: routineExercises.setLogs, sets: routineExercises.sets })
+    .from(routineExercises)
+    .where(eq(routineExercises.id, routineExerciseId))
+    .limit(1);
+  if (!row) {
+    return { error: "Exercise not found" };
+  }
+  if (setIndex >= row.sets) {
+    return { error: "Invalid set number" };
+  }
+
+  const setLogs: SetLog[] = [...(row.setLogs ?? Array.from({ length: row.sets }, () => ({ weightKg: null, completed: false })))];
+  setLogs[setIndex] = { weightKg: weightKg ?? null, completed: true };
+
+  const actualWeightKg = setLogs.reduce<number | null>(
+    (max, s) => (s.weightKg != null ? Math.max(max ?? s.weightKg, s.weightKg) : max),
+    null
+  );
+  const completed = setLogs.every((s) => s.completed);
+
+  await db
+    .update(routineExercises)
+    .set({ setLogs, actualWeightKg, completed })
+    .where(eq(routineExercises.id, routineExerciseId));
+
+  revalidatePath("/routine");
+  return { setLogs, actualWeightKg, completed };
+}
+
+export type ExerciseSessionData = {
+  routineExerciseId: number;
+  exerciseId: number;
+  exerciseName: string;
+  equipmentId: number | null;
+  equipmentName: string | null;
+  hasPhoto: boolean;
+  sets: number;
+  repsLow: number;
+  repsHigh: number;
+  restSeconds: number | null;
+  targetWeightKg: number | null;
+  intensityNote: string | null;
+  setLogs: SetLog[];
+};
+
+export async function getExerciseSession(routineExerciseId: number): Promise<ExerciseSessionData | null> {
+  const [row] = await db
+    .select({
+      routineExerciseId: routineExercises.id,
+      exerciseId: routineExercises.exerciseId,
+      exerciseName: exercises.name,
+      equipmentId: routineExercises.equipmentId,
+      equipmentName: equipment.name,
+      sets: routineExercises.sets,
+      repsLow: routineExercises.repsLow,
+      repsHigh: routineExercises.repsHigh,
+      restSeconds: routineExercises.restSeconds,
+      targetWeightKg: routineExercises.targetWeightKg,
+      intensityNote: routineExercises.intensityNote,
+      setLogs: routineExercises.setLogs,
+    })
+    .from(routineExercises)
+    .innerJoin(exercises, eq(routineExercises.exerciseId, exercises.id))
+    .leftJoin(equipment, eq(routineExercises.equipmentId, equipment.id))
+    .where(eq(routineExercises.id, routineExerciseId))
+    .limit(1);
+  if (!row) return null;
+
+  let hasPhoto = false;
+  if (row.equipmentId != null) {
+    const [photo] = await db
+      .select({ id: equipmentPhotos.id })
+      .from(equipmentPhotos)
+      .where(eq(equipmentPhotos.equipmentId, row.equipmentId))
+      .limit(1);
+    hasPhoto = !!photo;
+  }
+
+  return {
+    ...row,
+    equipmentName: row.equipmentName ?? null,
+    hasPhoto,
+    setLogs: row.setLogs ?? Array.from({ length: row.sets }, () => ({ weightKg: null, completed: false })),
+  };
+}
+
+export async function getDemoContent(exerciseId: number, equipmentName?: string) {
+  return getExerciseDemo(exerciseId, equipmentName);
 }
 
 export async function getRoutineHistory() {
@@ -267,6 +375,8 @@ export async function getRoutineHistory() {
           intensityNote: routineExercises.intensityNote,
           actualWeightKg: routineExercises.actualWeightKg,
           completed: routineExercises.completed,
+          setLogs: routineExercises.setLogs,
+          equipmentId: routineExercises.equipmentId,
           exerciseName: exercises.name,
         })
         .from(routineExercises)

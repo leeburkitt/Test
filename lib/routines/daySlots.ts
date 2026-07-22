@@ -1,6 +1,6 @@
-import type { RoutineContext, ExerciseWithEquipment } from "@/lib/routines/types";
+import type { RoutineContext, ExerciseWithEquipment, Equipment } from "@/lib/routines/types";
 import type { RoutineDayType } from "@/lib/db/schema";
-import { filterAvailableExercises } from "@/lib/routines/equipmentFilter";
+import { filterAvailableExercises, scopeEquipment } from "@/lib/routines/equipmentFilter";
 
 export type DaySlot = {
   dayOfWeek: number; // 0=Mon..6=Sun
@@ -9,6 +9,8 @@ export type DaySlot = {
   zoneName?: string;
   /** Exercises available for this specific day — zone-scoped for 'gym', dumbbell-only for 'free_weights', empty for cardio types. */
   available: ExerciseWithEquipment[];
+  /** The narrowed equipment pool itself (same scope as `available`) — used to match a specific machine to a chosen exercise. */
+  scopedEquipment: Equipment[];
 };
 
 export function dayTypeLabel(dayType: RoutineDayType): string {
@@ -24,6 +26,17 @@ export function dayTypeLabel(dayType: RoutineDayType): string {
     default:
       return "Gym";
   }
+}
+
+const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** "Monday · 20 Jul" — the real calendar date for a day, from the week's Monday anchor + offset. */
+export function formatDayHeading(weekStartDate: string, dayOfWeek: number | null): string | null {
+  if (dayOfWeek == null) return null;
+  const date = new Date(`${weekStartDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + dayOfWeek);
+  const dateLabel = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+  return `${WEEKDAY_NAMES[dayOfWeek]} · ${dateLabel}`;
 }
 
 /**
@@ -43,7 +56,7 @@ export function buildDaySlots(ctx: RoutineContext): DaySlot[] {
     if (!dayType || dayType === "rest") continue;
 
     if (dayType === "run" || dayType === "swim" || dayType === "walk") {
-      slots.push({ dayOfWeek, dayType, available: [] });
+      slots.push({ dayOfWeek, dayType, available: [], scopedEquipment: [] });
       continue;
     }
 
@@ -54,13 +67,11 @@ export function buildDaySlots(ctx: RoutineContext): DaySlot[] {
     }
     const zoneName = zoneId != null ? ctx.gymZones.find((z) => z.id === zoneId)?.name : undefined;
 
-    const available = filterAvailableExercises(
-      ctx.exerciseLibrary,
-      ctx.equipment,
-      dayType === "free_weights" ? { categoryOnly: "dumbbell" } : { zoneId }
-    );
+    const scope = dayType === "free_weights" ? ({ categoryOnly: "dumbbell" } as const) : { zoneId };
+    const scopedEquipment = scopeEquipment(ctx.equipment, scope);
+    const available = filterAvailableExercises(ctx.exerciseLibrary, ctx.equipment, scope);
 
-    slots.push({ dayOfWeek, dayType, zoneId, zoneName, available });
+    slots.push({ dayOfWeek, dayType, zoneId, zoneName, available, scopedEquipment });
   }
 
   return slots;

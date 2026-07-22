@@ -80,14 +80,13 @@ export const weeklyScheduleSchema = z.object({
   gymId: z.coerce.number().int().positive().optional(),
 });
 
-export const routineExerciseProgressSchema = z.object({
-  routineExerciseId: z.coerce.number().int().positive(),
-  actualWeightKg: z.coerce.number().positive().optional(),
+export const routineDayProgressSchema = z.object({
+  dayId: z.coerce.number().int().positive(),
   completed: z.coerce.boolean(),
 });
 
-export const routineDayProgressSchema = z.object({
-  dayId: z.coerce.number().int().positive(),
-  completed: z.coerce.boolean().optional(),
-  exercises: z.array(routineExerciseProgressSchema).optional(),
+export const logSetSchema = z.object({
+  routineExerciseId: z.coerce.number().int().positive(),
+  setIndex: z.coerce.number().int().min(0),
+  weightKg: z.coerce.number().positive().optional(),
 });

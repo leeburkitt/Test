@@ -2,8 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { logRoutineDay } from "@/lib/actions/routines";
-import type { RoutineDayType } from "@/lib/db/schema";
+import { formatDayHeading } from "@/lib/routines/daySlots";
+import type { RoutineDayType, SetLog } from "@/lib/db/schema";
 import {
   Dialog,
   DialogContent,
@@ -13,10 +15,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { ChevronRight } from "lucide-react";
 
 type DayExercise = {
   id: number;
@@ -27,12 +29,12 @@ type DayExercise = {
   targetWeightKg: number | null;
   restSeconds: number | null;
   intensityNote: string | null;
-  actualWeightKg: number | null;
-  completed: boolean;
+  setLogs: SetLog[] | null;
 };
 
 type RoutineDay = {
   id: number;
+  dayOfWeek: number | null;
   dayType: RoutineDayType;
   focus: string;
   coachNote: string | null;
@@ -42,47 +44,29 @@ type RoutineDay = {
 
 const CARDIO_TYPES: RoutineDayType[] = ["run", "swim", "walk"];
 
-export function RoutineDayDialog({ day, children }: { day: RoutineDay; children: React.ReactNode }) {
+export function RoutineDayDialog({
+  day,
+  weekStartDate,
+  children,
+}: {
+  day: RoutineDay;
+  weekStartDate: string;
+  children: React.ReactNode;
+}) {
   const router = useRouter();
   const isCardio = CARDIO_TYPES.includes(day.dayType);
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [cardioDone, setCardioDone] = useState(day.completed);
-  const [rows, setRows] = useState(
-    day.exercises.map((ex) => ({
-      routineExerciseId: ex.id,
-      actualWeightKg: ex.actualWeightKg != null ? String(ex.actualWeightKg) : "",
-      completed: ex.completed,
-    }))
-  );
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
-    if (next) {
-      setCardioDone(day.completed);
-      setRows(
-        day.exercises.map((ex) => ({
-          routineExerciseId: ex.id,
-          actualWeightKg: ex.actualWeightKg != null ? String(ex.actualWeightKg) : "",
-          completed: ex.completed,
-        }))
-      );
-    }
+    if (next) setCardioDone(day.completed);
   }
 
-  function handleSave() {
+  function handleSaveCardio() {
     startTransition(async () => {
-      const result = isCardio
-        ? await logRoutineDay({ dayId: day.id, completed: cardioDone })
-        : await logRoutineDay({
-            dayId: day.id,
-            exercises: rows.map((r) => ({
-              routineExerciseId: r.routineExerciseId,
-              actualWeightKg: r.actualWeightKg.trim() === "" ? undefined : Number(r.actualWeightKg),
-              completed: r.completed,
-            })),
-          });
-
+      const result = await logRoutineDay({ dayId: day.id, completed: cardioDone });
       if (result.error) {
         toast.error(result.error);
         return;
@@ -98,6 +82,9 @@ export function RoutineDayDialog({ day, children }: { day: RoutineDay; children:
       <DialogTrigger className="contents">{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
+          <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            {formatDayHeading(weekStartDate, day.dayOfWeek)}
+          </p>
           <DialogTitle>{day.focus}</DialogTitle>
         </DialogHeader>
 
@@ -114,10 +101,16 @@ export function RoutineDayDialog({ day, children }: { day: RoutineDay; children:
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
-            {day.exercises.map((ex, i) => (
-              <div key={ex.id} className="flex flex-col gap-2 rounded-lg border p-3">
-                <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-col gap-2">
+            {day.coachNote && <p className="text-muted-foreground text-sm">{day.coachNote}</p>}
+            {day.exercises.map((ex) => {
+              const setsDone = (ex.setLogs ?? []).filter((s) => s.completed).length;
+              return (
+                <Link
+                  key={ex.id}
+                  href={`/routine/exercise/${ex.id}`}
+                  className="flex items-center justify-between gap-2 rounded-lg border p-3 hover:bg-accent"
+                >
                   <div>
                     <p className="font-medium">{ex.exerciseName}</p>
                     <p className="text-muted-foreground text-xs">
@@ -125,52 +118,26 @@ export function RoutineDayDialog({ day, children }: { day: RoutineDay; children:
                       {ex.restSeconds != null && ` · rest ${ex.restSeconds}s`}
                       {ex.targetWeightKg != null && ` · target ${ex.targetWeightKg}kg`}
                     </p>
-                    {ex.intensityNote && (
-                      <p className="text-muted-foreground mt-1 text-xs italic">{ex.intensityNote}</p>
-                    )}
                   </div>
-                  <div className="flex shrink-0 items-center gap-2 pt-0.5">
-                    <Checkbox
-                      id={`ex-done-${ex.id}`}
-                      checked={rows[i].completed}
-                      onCheckedChange={(checked) =>
-                        setRows((prev) =>
-                          prev.map((r, idx) => (idx === i ? { ...r, completed: checked === true } : r))
-                        )
-                      }
-                    />
-                    <Label htmlFor={`ex-done-${ex.id}`} className="text-sm">
-                      Done
-                    </Label>
+                  <div className="flex shrink-0 items-center gap-1 text-sm">
+                    <span className={setsDone === ex.sets ? "text-green-600 dark:text-green-500" : "text-muted-foreground"}>
+                      {setsDone}/{ex.sets} sets
+                    </span>
+                    <ChevronRight className="text-muted-foreground size-4" />
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor={`ex-weight-${ex.id}`} className="text-xs">
-                    Weight lifted (kg)
-                  </Label>
-                  <Input
-                    id={`ex-weight-${ex.id}`}
-                    type="number"
-                    step="0.5"
-                    className="w-24"
-                    value={rows[i].actualWeightKg}
-                    onChange={(e) =>
-                      setRows((prev) =>
-                        prev.map((r, idx) => (idx === i ? { ...r, actualWeightKg: e.target.value } : r))
-                      )
-                    }
-                  />
-                </div>
-              </div>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
 
-        <DialogFooter>
-          <Button onClick={handleSave} disabled={pending}>
-            {pending ? "Saving..." : "Save progress"}
-          </Button>
-        </DialogFooter>
+        {isCardio && (
+          <DialogFooter>
+            <Button onClick={handleSaveCardio} disabled={pending}>
+              {pending ? "Saving..." : "Save progress"}
+            </Button>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -5,8 +5,9 @@ import type {
   GeneratedRoutineDay,
   GeneratedExercise,
   ExerciseWithEquipment,
+  Goal,
 } from "@/lib/routines/types";
-import type { MovementPattern, TrendStatus, RoutineDayType } from "@/lib/db/schema";
+import type { MovementPattern, TrendStatus, RoutineDayType, MuscleGroup } from "@/lib/db/schema";
 import { analyzeTrend } from "@/lib/routines/trendAnalysis";
 import { buildDaySlots, dayTypeLabel } from "@/lib/routines/daySlots";
 
@@ -42,6 +43,49 @@ function dayFocusPlan(gymDayCount: number): string[] {
 function restSecondsFor(ex: ExerciseWithEquipment): number {
   if (ex.movementPattern === "core" || ex.movementPattern === "cardio") return 45;
   return ex.isCompound ? 120 : 75;
+}
+
+const MUSCLE_GROUP_LABELS: Record<MuscleGroup, string> = {
+  chest: "chest",
+  back: "back",
+  legs: "legs",
+  shoulders: "shoulders",
+  arms: "arms",
+  core: "core",
+  full_body: "full body",
+};
+
+function formatList(items: string[]): string {
+  const unique = Array.from(new Set(items));
+  if (unique.length === 0) return "a full-body mix";
+  if (unique.length === 1) return unique[0];
+  if (unique.length === 2) return `${unique[0]} and ${unique[1]}`;
+  return `${unique.slice(0, -1).join(", ")}, and ${unique[unique.length - 1]}`;
+}
+
+/**
+ * A gym/free-weights day's "here's what we're doing today and why" briefing — the body
+ * parts this day's actual chosen exercises train, plus a one-line tie-in to the active goal,
+ * so the session opens with context rather than just a bare exercise list.
+ */
+function buildGymDaySummary(
+  exercises: GeneratedExercise[],
+  exerciseLibrary: ExerciseWithEquipment[],
+  goal: Goal,
+  deloadWeek: boolean
+): string {
+  const byId = new Map(exerciseLibrary.map((ex) => [ex.id, ex]));
+  const groups = exercises
+    .map((ex) => byId.get(ex.exerciseId)?.muscleGroup)
+    .filter((g): g is MuscleGroup => !!g)
+    .map((g) => MUSCLE_GROUP_LABELS[g]);
+  const focusText = formatList(groups);
+
+  if (deloadWeek) {
+    return `Today's focus: ${focusText}. Deload week — lighter volume while staying consistent toward your ${goal.primaryGoal ?? "fitness"} goal.`;
+  }
+  const secondary = goal.secondaryGoal ? ` and ${goal.secondaryGoal}` : "";
+  return `Today's focus: ${focusText}. This session builds toward your ${goal.primaryGoal ?? "fitness"} goal${secondary}.`;
 }
 
 export class RuleBasedRoutineGenerator implements RoutineGenerator {
@@ -99,6 +143,7 @@ export class RuleBasedRoutineGenerator implements RoutineGenerator {
         dayOfWeek,
         dayType,
         zoneId: slot.zoneId,
+        coachNote: buildGymDaySummary(exercises, ctx.exerciseLibrary, ctx.goal, deloadWeek),
         exercises,
       });
 

@@ -154,6 +154,8 @@ export const exercises = pgTable("exercises", {
   isCompound: boolean("is_compound").notNull().default(false),
   strengthTargetKey: text("strength_target_key"),
   defaultSetsRepsScheme: jsonb("default_sets_reps_scheme").$type<SetsRepsScheme>().notNull(),
+  demoSteps: jsonb("demo_steps").$type<string[]>(),
+  demoVideoUrl: text("demo_video_url"),
   createdAt: text("created_at").notNull().default(sql`(current_timestamp)`),
 });
 
@@ -196,10 +198,13 @@ export const routineDays = pgTable("routine_days", {
   completed: boolean("completed").notNull().default(false),
 });
 
+export type SetLog = { weightKg: number | null; completed: boolean };
+
 export const routineExercises = pgTable("routine_exercises", {
   id: serial("id").primaryKey(),
   routineDayId: integer("routine_day_id").notNull().references(() => routineDays.id, { onDelete: "cascade" }),
   exerciseId: integer("exercise_id").notNull().references(() => exercises.id),
+  equipmentId: integer("equipment_id").references(() => equipment.id, { onDelete: "set null" }),
   orderIndex: integer("order_index").notNull(),
   sets: integer("sets").notNull(),
   repsLow: integer("reps_low").notNull(),
@@ -210,4 +215,5 @@ export const routineExercises = pgTable("routine_exercises", {
   notes: text("notes"),
   actualWeightKg: real("actual_weight_kg"),
   completed: boolean("completed").notNull().default(false),
+  setLogs: jsonb("set_logs").$type<SetLog[]>(),
 });

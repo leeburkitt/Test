@@ -1,7 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RoutineDayDialog } from "@/components/routine/RoutineDayDialog";
-import type { TrendStatus, RoutineDayType } from "@/lib/db/schema";
+import { formatDayHeading } from "@/lib/routines/daySlots";
+import type { TrendStatus, RoutineDayType, SetLog } from "@/lib/db/schema";
 
 const STATUS_LABEL: Record<TrendStatus, string> = {
   ahead: "Ahead",
@@ -14,6 +15,7 @@ const CARDIO_TYPES: RoutineDayType[] = ["run", "swim", "walk"];
 type RoutineDay = {
   id: number;
   dayIndex: number;
+  dayOfWeek: number | null;
   dayType: RoutineDayType;
   focus: string;
   coachNote: string | null;
@@ -28,6 +30,7 @@ type RoutineDay = {
     intensityNote: string | null;
     actualWeightKg: number | null;
     completed: boolean;
+    setLogs: SetLog[] | null;
     exerciseName: string;
   }[];
 };
@@ -49,11 +52,13 @@ function CompletionBadge({ day }: { day: RoutineDay }) {
 
 export function RoutineCard({
   weekNumber,
+  weekStartDate,
   trendStatus,
   rationale,
   days,
 }: {
   weekNumber: number;
+  weekStartDate: string;
   trendStatus: TrendStatus;
   rationale: string;
   days: RoutineDay[];
@@ -68,13 +73,21 @@ export function RoutineCard({
         <p className="text-muted-foreground text-sm">{rationale}</p>
         <div className="grid gap-4 sm:grid-cols-2">
           {days.map((day) => (
-            <RoutineDayDialog key={day.id} day={day}>
+            <RoutineDayDialog key={day.id} day={day} weekStartDate={weekStartDate}>
               <div className="flex w-full flex-col rounded-lg border p-3 text-left transition-colors hover:bg-accent">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <h3 className="font-medium">{day.focus}</h3>
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                      {formatDayHeading(weekStartDate, day.dayOfWeek)}
+                    </p>
+                    <h3 className="font-medium">{day.focus}</h3>
+                  </div>
                   <CompletionBadge day={day} />
                 </div>
-                {day.exercises.length > 0 ? (
+                {day.coachNote && (
+                  <p className="text-muted-foreground mb-2 text-sm">{day.coachNote}</p>
+                )}
+                {day.exercises.length > 0 && (
                   <ul className="flex flex-col gap-1.5 text-sm">
                     {day.exercises.map((ex) => (
                       <li key={ex.id} className="flex flex-col">
@@ -89,8 +102,6 @@ export function RoutineCard({
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  day.coachNote && <p className="text-muted-foreground text-sm">{day.coachNote}</p>
                 )}
               </div>
             </RoutineDayDialog>

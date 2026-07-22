@@ -15,6 +15,13 @@
       "when": 1784572508062,
       "tag": "0001_blushing_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784715194477,
+      "tag": "0002_nosy_freak",
+      "breakpoints": true
     }
   ]
 }
