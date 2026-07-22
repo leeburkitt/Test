@@ -155,7 +155,9 @@ export const exercises = pgTable("exercises", {
   strengthTargetKey: text("strength_target_key"),
   defaultSetsRepsScheme: jsonb("default_sets_reps_scheme").$type<SetsRepsScheme>().notNull(),
   demoSteps: jsonb("demo_steps").$type<string[]>(),
-  demoVideoUrl: text("demo_video_url"),
+  demoImage: bytea("demo_image"),
+  demoImageMimeType: text("demo_image_mime_type"),
+  demoImageAttempted: boolean("demo_image_attempted").notNull().default(false),
   createdAt: text("created_at").notNull().default(sql`(current_timestamp)`),
 });
 
@@ -198,7 +200,7 @@ export const routineDays = pgTable("routine_days", {
   completed: boolean("completed").notNull().default(false),
 });
 
-export type SetLog = { weightKg: number | null; completed: boolean };
+export type SetLog = { weightKg: number | null; repsCompleted: number | null; completed: boolean };
 
 export const routineExercises = pgTable("routine_exercises", {
   id: serial("id").primaryKey(),

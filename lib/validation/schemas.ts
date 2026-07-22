@@ -89,4 +89,5 @@ export const logSetSchema = z.object({
   routineExerciseId: z.coerce.number().int().positive(),
   setIndex: z.coerce.number().int().min(0),
   weightKg: z.coerce.number().positive().optional(),
+  repsCompleted: z.coerce.number().int().positive().optional(),
 });

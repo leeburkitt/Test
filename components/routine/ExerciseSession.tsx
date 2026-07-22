@@ -48,12 +48,13 @@ export function ExerciseSession({ data }: { data: ExerciseSessionData }) {
 
   const [phase, setPhase] = useState<Phase>(isDone ? "done" : "ready");
   const [weightInput, setWeightInput] = useState("");
+  const [repsInput, setRepsInput] = useState("");
   const [restRemaining, setRestRemaining] = useState(0);
   const [pending, startTransition] = useTransition();
 
   const [demoLoading, setDemoLoading] = useState(true);
   const [demoSteps, setDemoSteps] = useState<string[]>([]);
-  const [demoVideoUrl, setDemoVideoUrl] = useState<string | null>(null);
+  const [demoHasImage, setDemoHasImage] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +62,7 @@ export function ExerciseSession({ data }: { data: ExerciseSessionData }) {
       .then((demo) => {
         if (cancelled) return;
         setDemoSteps(demo.steps);
-        setDemoVideoUrl(demo.videoUrl);
+        setDemoHasImage(demo.hasImage);
       })
       .catch(() => {
         if (!cancelled) setDemoSteps([]);
@@ -91,16 +92,28 @@ export function ExerciseSession({ data }: { data: ExerciseSessionData }) {
 
   function handleEndSet() {
     const previousWeight = [...setLogs].reverse().find((s) => s.weightKg != null)?.weightKg;
+    const previousReps = [...setLogs].reverse().find((s) => s.repsCompleted != null)?.repsCompleted;
     setWeightInput(
       previousWeight != null ? String(previousWeight) : data.targetWeightKg != null ? String(data.targetWeightKg) : ""
     );
+    setRepsInput(previousReps != null ? String(previousReps) : String(data.repsHigh));
     setPhase("entering-weight");
   }
 
   function handleSaveSet() {
     const weightKg = weightInput.trim() === "" ? undefined : Number(weightInput);
+    const repsCompleted = repsInput.trim() === "" ? undefined : Number(repsInput);
+    if (repsCompleted == null) {
+      toast.error("Enter how many reps you completed.");
+      return;
+    }
     startTransition(async () => {
-      const result = await logSet({ routineExerciseId: data.routineExerciseId, setIndex: currentSetIndex, weightKg });
+      const result = await logSet({
+        routineExerciseId: data.routineExerciseId,
+        setIndex: currentSetIndex,
+        weightKg,
+        repsCompleted,
+      });
       if (result.error) {
         toast.error(result.error);
         return;
@@ -174,13 +187,24 @@ export function ExerciseSession({ data }: { data: ExerciseSessionData }) {
           {phase === "entering-weight" && (
             <div className="flex items-end gap-2">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="weight-lifted">Weight lifted (kg)</Label>
+                <Label htmlFor="reps-completed">Reps completed</Label>
+                <Input
+                  id="reps-completed"
+                  type="number"
+                  step="1"
+                  className="w-24"
+                  autoFocus
+                  value={repsInput}
+                  onChange={(e) => setRepsInput(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="weight-lifted">Weight (kg)</Label>
                 <Input
                   id="weight-lifted"
                   type="number"
                   step="0.5"
                   className="w-28"
-                  autoFocus
                   value={weightInput}
                   onChange={(e) => setWeightInput(e.target.value)}
                 />
@@ -216,7 +240,11 @@ export function ExerciseSession({ data }: { data: ExerciseSessionData }) {
           >
             <span>Set {i + 1}</span>
             <span>
-              {log.completed ? (log.weightKg != null ? `${log.weightKg}kg` : "done") : "—"}
+              {log.completed
+                ? [log.repsCompleted != null ? `${log.repsCompleted} reps` : null, log.weightKg != null ? `${log.weightKg}kg` : null]
+                    .filter(Boolean)
+                    .join(" @ ") || "done"
+                : "—"}
             </span>
           </div>
         ))}
@@ -227,26 +255,28 @@ export function ExerciseSession({ data }: { data: ExerciseSessionData }) {
           <p className="text-sm font-medium text-muted-foreground">How to do it</p>
           {demoLoading ? (
             <p className="text-muted-foreground text-sm">Loading technique tips...</p>
-          ) : demoSteps.length > 0 ? (
-            <ol className="flex flex-col gap-1.5 text-sm">
-              {demoSteps.map((step, i) => (
-                <li key={i}>
-                  {i + 1}. {step}
-                </li>
-              ))}
-            </ol>
           ) : (
-            <p className="text-muted-foreground text-sm">No technique tips available.</p>
-          )}
-          {demoVideoUrl && (
-            <a
-              href={demoVideoUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary text-sm underline underline-offset-4"
-            >
-              Watch a demo video
-            </a>
+            <>
+              {demoHasImage && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`/api/exercises/${data.exerciseId}/demo-image`}
+                  alt={`${data.exerciseName} demonstration`}
+                  className="w-full max-w-xs self-center rounded-lg border"
+                />
+              )}
+              {demoSteps.length > 0 ? (
+                <ol className="flex flex-col gap-1.5 text-sm">
+                  {demoSteps.map((step, i) => (
+                    <li key={i}>
+                      {i + 1}. {step}
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="text-muted-foreground text-sm">No technique tips available.</p>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

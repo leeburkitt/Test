@@ -182,6 +182,7 @@ export async function generateRoutineForCurrentWeek(): Promise<{ error?: string 
       const matchedEquipment = libraryEntry ? pickEquipmentForExercise(libraryEntry, scopedEquipment) : undefined;
       const initialSetLogs: SetLog[] = Array.from({ length: ex.sets }, () => ({
         weightKg: null,
+        repsCompleted: null,
         completed: false,
       }));
 
@@ -251,7 +252,7 @@ export async function logSet(input: LogSetInput): Promise<LogSetResult> {
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { routineExerciseId, setIndex, weightKg } = parsed.data;
+  const { routineExerciseId, setIndex, weightKg, repsCompleted } = parsed.data;
 
   const [row] = await db
     .select({ setLogs: routineExercises.setLogs, sets: routineExercises.sets })
@@ -265,8 +266,10 @@ export async function logSet(input: LogSetInput): Promise<LogSetResult> {
     return { error: "Invalid set number" };
   }
 
-  const setLogs: SetLog[] = [...(row.setLogs ?? Array.from({ length: row.sets }, () => ({ weightKg: null, completed: false })))];
-  setLogs[setIndex] = { weightKg: weightKg ?? null, completed: true };
+  const setLogs: SetLog[] = [
+    ...(row.setLogs ?? Array.from({ length: row.sets }, () => ({ weightKg: null, repsCompleted: null, completed: false }))),
+  ];
+  setLogs[setIndex] = { weightKg: weightKg ?? null, repsCompleted: repsCompleted ?? null, completed: true };
 
   const actualWeightKg = setLogs.reduce<number | null>(
     (max, s) => (s.weightKg != null ? Math.max(max ?? s.weightKg, s.weightKg) : max),
@@ -336,7 +339,7 @@ export async function getExerciseSession(routineExerciseId: number): Promise<Exe
     ...row,
     equipmentName: row.equipmentName ?? null,
     hasPhoto,
-    setLogs: row.setLogs ?? Array.from({ length: row.sets }, () => ({ weightKg: null, completed: false })),
+    setLogs: row.setLogs ?? Array.from({ length: row.sets }, () => ({ weightKg: null, repsCompleted: null, completed: false })),
   };
 }
 
