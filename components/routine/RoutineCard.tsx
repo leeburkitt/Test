@@ -32,6 +32,8 @@ type RoutineDay = {
     completed: boolean;
     setLogs: SetLog[] | null;
     exerciseName: string;
+    equipmentName: string | null;
+    zoneName: string | null;
   }[];
 };
 
@@ -96,6 +98,13 @@ export function RoutineCard({
                           {ex.targetWeightKg != null && ` @ ${ex.targetWeightKg}kg`}
                           {ex.restSeconds != null && ` · rest ${ex.restSeconds}s`}
                         </span>
+                        {(ex.equipmentName || ex.zoneName) && (
+                          <span className="text-muted-foreground text-xs">
+                            {ex.equipmentName}
+                            {ex.equipmentName && ex.zoneName && " — "}
+                            {ex.zoneName}
+                          </span>
+                        )}
                         {ex.intensityNote && (
                           <span className="text-muted-foreground text-xs">{ex.intensityNote}</span>
                         )}

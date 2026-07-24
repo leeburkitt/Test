@@ -39,17 +39,32 @@ export function formatDayHeading(weekStartDate: string, dayOfWeek: number | null
   return `${WEEKDAY_NAMES[dayOfWeek]} · ${dateLabel}`;
 }
 
+/** Zones that actually contain at least one piece of equipment in the given category — picking
+ * only from these avoids assigning a free-weights day to a zone with no dumbbells at all. */
+function zonesWithCategory(
+  equipment: RoutineContext["equipment"],
+  zones: RoutineContext["gymZones"],
+  category: string
+): RoutineContext["gymZones"] {
+  const zoneIds = new Set(
+    equipment.filter((e) => e.category === category && e.zoneId != null).map((e) => e.zoneId as number)
+  );
+  return zones.filter((z) => zoneIds.has(z.id));
+}
+
 /**
  * Walks the week's schedule in real Mon-Sun order, skipping rest days entirely, and assigns
- * each gym day a zone (round-robin across the selected gym's zones) so a single day's exercises
- * never span more than one zone. Shared between generators so both apply the exact same
- * day/zone assignment for a given schedule.
+ * each gym/free-weights day a single zone so a day's exercises never span more than one
+ * physical part of the gym — mixing zones within a day makes for a bad in-gym experience,
+ * walking back and forth between machines. 'gym' days round-robin across all zones;
+ * 'free_weights' days round-robin only across zones that actually have dumbbells. Shared
+ * between generators so both apply the exact same day/zone assignment for a given schedule.
  */
 export function buildDaySlots(ctx: RoutineContext): DaySlot[] {
   const slots: DaySlot[] = [];
-  // Only real 'gym' (zone-scoped) days advance the round-robin — 'free_weights' days don't
-  // consume a zone, so interleaving them must not skip zones for the surrounding gym days.
-  let zoneRoundRobin = 0;
+  let gymZoneRoundRobin = 0;
+  let freeWeightsZoneRoundRobin = 0;
+  const dumbbellZones = zonesWithCategory(ctx.equipment, ctx.gymZones, "dumbbell");
 
   for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
     const dayType = ctx.weeklySchedule.days[dayOfWeek];
@@ -62,12 +77,15 @@ export function buildDaySlots(ctx: RoutineContext): DaySlot[] {
 
     let zoneId: number | undefined;
     if (dayType === "gym" && ctx.gymZones.length > 0) {
-      zoneId = ctx.gymZones[zoneRoundRobin % ctx.gymZones.length].id;
-      zoneRoundRobin++;
+      zoneId = ctx.gymZones[gymZoneRoundRobin % ctx.gymZones.length].id;
+      gymZoneRoundRobin++;
+    } else if (dayType === "free_weights" && dumbbellZones.length > 0) {
+      zoneId = dumbbellZones[freeWeightsZoneRoundRobin % dumbbellZones.length].id;
+      freeWeightsZoneRoundRobin++;
     }
     const zoneName = zoneId != null ? ctx.gymZones.find((z) => z.id === zoneId)?.name : undefined;
 
-    const scope = dayType === "free_weights" ? ({ categoryOnly: "dumbbell" } as const) : { zoneId };
+    const scope = dayType === "free_weights" ? ({ zoneId, categoryOnly: "dumbbell" } as const) : { zoneId };
     const scopedEquipment = scopeEquipment(ctx.equipment, scope);
     const available = filterAvailableExercises(ctx.exerciseLibrary, ctx.equipment, scope);
 

@@ -30,6 +30,8 @@ type DayExercise = {
   restSeconds: number | null;
   intensityNote: string | null;
   setLogs: SetLog[] | null;
+  equipmentName: string | null;
+  zoneName: string | null;
 };
 
 type RoutineDay = {
@@ -113,6 +115,13 @@ export function RoutineDayDialog({
                 >
                   <div>
                     <p className="font-medium">{ex.exerciseName}</p>
+                    {(ex.equipmentName || ex.zoneName) && (
+                      <p className="text-muted-foreground text-xs">
+                        {ex.equipmentName}
+                        {ex.equipmentName && ex.zoneName && " — "}
+                        {ex.zoneName}
+                      </p>
+                    )}
                     <p className="text-muted-foreground text-xs">
                       {ex.sets} × {ex.repsLow}-{ex.repsHigh}
                       {ex.restSeconds != null && ` · rest ${ex.restSeconds}s`}

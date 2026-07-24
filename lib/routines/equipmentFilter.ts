@@ -15,13 +15,14 @@ export function scopeEquipment(
   equipmentList: Equipment[],
   scope?: { zoneId?: number; categoryOnly?: EquipmentCategory }
 ): Equipment[] {
-  if (scope?.categoryOnly) {
-    return equipmentList.filter((e) => e.category === scope.categoryOnly);
-  }
+  let scoped = equipmentList;
   if (scope?.zoneId != null) {
-    return equipmentList.filter((e) => e.zoneId === scope.zoneId);
+    scoped = scoped.filter((e) => e.zoneId === scope.zoneId);
   }
-  return equipmentList;
+  if (scope?.categoryOnly) {
+    scoped = scoped.filter((e) => e.category === scope.categoryOnly);
+  }
+  return scoped;
 }
 
 export function filterAvailableExercises(

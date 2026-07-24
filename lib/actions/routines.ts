@@ -381,9 +381,13 @@ export async function getRoutineHistory() {
           setLogs: routineExercises.setLogs,
           equipmentId: routineExercises.equipmentId,
           exerciseName: exercises.name,
+          equipmentName: equipment.name,
+          zoneName: gymZones.name,
         })
         .from(routineExercises)
         .innerJoin(exercises, eq(routineExercises.exerciseId, exercises.id))
+        .leftJoin(equipment, eq(routineExercises.equipmentId, equipment.id))
+        .leftJoin(gymZones, eq(equipment.zoneId, gymZones.id))
         .where(eq(routineExercises.routineDayId, day.id))
         .orderBy(routineExercises.orderIndex);
 
